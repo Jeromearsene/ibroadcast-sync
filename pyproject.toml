@@ -16,7 +16,7 @@ python-dotenv = ">=1.0,<2.0"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
 pytest-cov = "^5.0"
-ruff = "^0.13"
+ruff = ">=0.13,<0.17"
 mypy = "^1.11"
 types-requests = ">=2.32,<3.0"
 
