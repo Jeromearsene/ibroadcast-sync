@@ -1,0 +1,28 @@
+name: Set up Python + Poetry
+description: >
+  Installs Poetry, sets up the requested Python version with Poetry's
+  dependency cache wired in, and runs `poetry install`. Assumes the repo
+  has already been checked out (actions/checkout) in the calling job -
+  a local composite action can only be resolved after that, so checkout
+  itself can't live in here without turning this into a remote-ref action.
+
+inputs:
+  python-version:
+    description: Python version to set up (passed through to actions/setup-python)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install Poetry
+      shell: bash
+      run: pipx install poetry
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: poetry
+
+    - name: Install dependencies
+      shell: bash
+      run: poetry install --no-interaction

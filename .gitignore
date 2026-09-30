@@ -1,0 +1,29 @@
+# --- Personal data / secrets: NEVER commit ---
+# The data/ folder holds the MD5 cache, the OAuth token, the library dump,
+# and the failures log for EACH user. It stays in the project so it's easy
+# to read/inspect, but nothing in it should ever end up on GitHub.
+data/*
+!data/.gitkeep
+.env
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# --- Tools ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- OS ---
+.DS_Store

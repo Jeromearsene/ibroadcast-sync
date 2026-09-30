@@ -1,0 +1,10 @@
+# Optional: https://pre-commit.com
+# Install once with:  pip install pre-commit && pre-commit install
+# Runs automatically on every `git commit` from then on.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.3
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-poetry
+        with:
+          python-version: "3.12"
+
+      - name: Ruff check (lint)
+        run: poetry run ruff check .
+
+      - name: Ruff format (check only)
+        run: poetry run ruff format --check .
+
+      - name: mypy (type check)
+        run: poetry run mypy src/ibroadcast_sync tests
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Lowest and highest versions supported by pyproject.toml
+        # (python = "^3.9") - catches syntax/stdlib compatibility issues
+        # that only show up at one end of the range.
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-poetry
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Byte-compile (syntax check)
+        run: poetry run python -m py_compile src/ibroadcast_sync/*.py
+
+      - name: Import check
+        run: poetry run python -c "import ibroadcast_sync.cli"
+
+      # Also exercises tests/test_docs_site.py (structural checks on
+      # docs/index.html) since it's just part of the same pytest suite.
+      - name: pytest
+        run: poetry run pytest

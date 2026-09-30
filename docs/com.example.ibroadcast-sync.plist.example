@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+Example launchd job to run the sync every night.
+
+Setup:
+  1. Adjust the paths below (PROJECT, poetry) and your IBROADCAST_CLIENT_ID.
+  2. Copy this file to ~/Library/LaunchAgents/com.example.ibroadcast-sync.plist
+  3. launchctl load ~/Library/LaunchAgents/com.example.ibroadcast-sync.plist
+
+Authentication is only interactive on the very first run (the one you
+launch yourself in a terminal, not via launchd) - once the token is
+cached in data/, the scheduled job runs unattended.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.ibroadcast-sync</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>IBROADCAST_CLIENT_ID</key>
+    <string>your_client_id</string>
+  </dict>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/path/to/PROJECT/scripts/run.sh</string>
+    <string>--no-playlists</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/PROJECT</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/ibroadcast-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/ibroadcast-sync.err</string>
+</dict>
+</plist>
