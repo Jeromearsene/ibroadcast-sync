@@ -147,6 +147,7 @@ def sync_ratings(client: IBroadcastClient, dry_run: bool, verbose: bool = False)
                         delay = next_retry_delay(delay, max_delay=max_delay)
                         consecutive_successes = 0
                         continue
+                    consecutive_successes = 0
                     failed += 1
                     failures.append((label, str(e)))
                     progress.update(label, "failure")
