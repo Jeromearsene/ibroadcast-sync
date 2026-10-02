@@ -29,6 +29,31 @@ def itunes_rating_to_ibroadcast(rating_0_100: int) -> int:
     return max(0, min(5, rounded))
 
 
+def next_retry_delay(current_delay: float, *, max_delay: float) -> float:
+    """Doubles the delay after being rate-limited, capped at max_delay."""
+    return min(current_delay * 2, max_delay)
+
+
+def decayed_delay(
+    current_delay: float,
+    consecutive_successes: int,
+    *,
+    min_delay: float,
+    decay_after: int,
+) -> tuple[float, int]:
+    """Eases the delay back down after `decay_after` consecutive
+    successful calls in a row, so a single rate-limit spike early in a run
+    doesn't keep every remaining track throttled at max_delay for the rest
+    of it (a real risk for libraries of several thousand tracks - see the
+    README's own ~15-20 min estimate, which assumes no sustained
+    throttling). Returns (new_delay, new_consecutive_successes) - the
+    streak resets to 0 whenever the delay actually changes, so the next
+    decay only fires after another full streak at the new, lower delay."""
+    if consecutive_successes < decay_after:
+        return current_delay, consecutive_successes
+    return max(min_delay, current_delay / 2), 0
+
+
 def sync_ratings(client: IBroadcastClient, dry_run: bool, verbose: bool = False) -> None:
     log("Reading Music.app ratings...")
     local_tracks = get_music_app_ratings(verbose=verbose)
@@ -43,8 +68,11 @@ def sync_ratings(client: IBroadcastClient, dry_run: bool, verbose: bool = False)
     # too fast - no fixed delay is documented, so we start conservative and
     # increase the delay every time we get rate-limited.
     delay = 0.3
+    min_delay = delay
     max_delay = 8.0
     max_retries = 6
+    decay_after = 20  # consecutive successful calls before easing the delay back down
+    consecutive_successes = 0
 
     updated, unmatched, unchanged, already_ok, failed = 0, 0, 0, 0, 0
     total_to_rate = sum(1 for t in local_tracks if t.get("rating"))
@@ -107,12 +135,17 @@ def sync_ratings(client: IBroadcastClient, dry_run: bool, verbose: bool = False)
                     client.api_call("ratetrack", {"track_id": track_id, "rating": ib_rating})
                     updated += 1
                     progress.update(label, "upload")
+                    consecutive_successes += 1
+                    delay, consecutive_successes = decayed_delay(
+                        delay, consecutive_successes, min_delay=min_delay, decay_after=decay_after
+                    )
                     break
                 except Exception as e:
                     msg = str(e)
                     if "too many requests" in msg.lower() and attempt < max_retries:
                         attempt += 1
-                        delay = min(delay * 2, max_delay)
+                        delay = next_retry_delay(delay, max_delay=max_delay)
+                        consecutive_successes = 0
                         continue
                     failed += 1
                     failures.append((label, str(e)))
