@@ -53,6 +53,12 @@ def interactive_wizard() -> argparse.Namespace:
         source_dir = None
     else:
         source_dir = ask("Path to your music root folder") or None
+        if source_dir is None:
+            # Leaving this blank used to silently fall back to Music.app
+            # anyway (source_dir stays None, which do_upload() treats the
+            # same as "use Music.app"), quietly overriding the "no" just
+            # answered above with no explanation.
+            print("  No path entered - falling back to Music.app after all.\n")
 
     do_upload_flag = ask_yes_no("Upload new tracks to iBroadcast", default=True)
     do_playlists_flag = ask_yes_no("Sync Music.app playlists", default=True)
