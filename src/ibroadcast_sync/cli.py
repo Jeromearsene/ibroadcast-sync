@@ -56,6 +56,7 @@ def interactive_wizard() -> argparse.Namespace:
 
     do_upload_flag = ask_yes_no("Upload new tracks to iBroadcast", default=True)
     do_playlists_flag = ask_yes_no("Sync Music.app playlists", default=True)
+    do_ratings_flag = ask_yes_no("Sync Music.app ratings to iBroadcast (0-5 stars)", default=False)
     dry_run = ask_yes_no("Simulation mode (dry-run: nothing gets sent, just a preview)", default=False)
 
     workers_str = ask("Number of files processed in parallel", default="4")
@@ -70,6 +71,7 @@ def interactive_wizard() -> argparse.Namespace:
     print(f"  - Source        : {'Music.app (automatic)' if source_dir is None else source_dir}")
     print(f"  - Upload        : {'yes' if do_upload_flag else 'no'}")
     print(f"  - Playlists     : {'yes' if do_playlists_flag else 'no'}")
+    print(f"  - Ratings       : {'yes' if do_ratings_flag else 'no'}")
     print(f"  - Dry-run       : {'yes' if dry_run else 'no'}")
     print(f"  - Parallelism   : {workers}")
     print()
@@ -84,7 +86,7 @@ def interactive_wizard() -> argparse.Namespace:
         no_playlists=not do_playlists_flag,
         workers=workers,
         dry_run=dry_run,
-        sync_ratings=False,
+        sync_ratings=do_ratings_flag,
         dump_library=False,
         dump_playlists=False,
     )
