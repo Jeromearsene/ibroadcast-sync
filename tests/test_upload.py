@@ -55,6 +55,19 @@ class TestFindLocalFiles:
         (tmp_path / "cover.jpg").write_bytes(b"")
         assert find_local_files(str(tmp_path), {".mp3"}) == []
 
+    def test_matches_extension_case_insensitively(self, tmp_path: Path) -> None:
+        # Regression test: an extension like ".MP3" or ".FLAC" (common on
+        # older rips, or files copied from a case-insensitive filesystem)
+        # used to be compared as-is against the lowercase entries in
+        # supported_extensions and silently dropped - no log line, no
+        # failure count, it just never made it into the result.
+        (tmp_path / "Track.MP3").write_bytes(b"")
+        (tmp_path / "other.FLAC").write_bytes(b"")
+
+        found = find_local_files(str(tmp_path), {".mp3", ".flac"})
+
+        assert set(found) == {str(tmp_path / "Track.MP3"), str(tmp_path / "other.FLAC")}
+
 
 class TestProcessFileMissingFile:
     def test_missing_file_is_reported_as_a_failure_not_raised(self, tmp_path: Path) -> None:

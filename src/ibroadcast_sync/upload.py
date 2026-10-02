@@ -34,7 +34,9 @@ ProcessResult = tuple[str, str, bool, "str | None"]
 
 def load_supported_extensions(client: IBroadcastClient) -> set[str]:
     data = client.api_call("status", {"supported_types": 1})
-    return {ft["extension"] for ft in data["supported"]}
+    # Lowercased so the comparisons in find_local_files()/do_upload() below
+    # don't depend on whatever casing the API happens to use.
+    return {ft["extension"].lower() for ft in data["supported"]}
 
 
 def find_local_files(directory: str, supported_extensions: set[str]) -> list[str]:
@@ -51,7 +53,13 @@ def find_local_files(directory: str, supported_extensions: set[str]) -> list[str
             files.extend(find_local_files(full_filename, supported_extensions))
             continue
         _, ext = os.path.splitext(full_filename)
-        if ext in supported_extensions:
+        # Case-insensitive: a file named "Track.MP3" or "Track.FLAC"
+        # (common on older rips, or on files copied from a
+        # case-insensitive filesystem) must still match a lowercase entry
+        # in supported_extensions. This used to be a silent skip - no log
+        # line, no failure count, the file just never made it into this
+        # list.
+        if ext.lower() in supported_extensions:
             files.append(full_filename)
     return files
 
@@ -194,8 +202,9 @@ def do_upload(client: IBroadcastClient, source_dir: str | None, dry_run: bool, w
         local_files = find_local_files(source_dir, supported)
     else:
         local_files = get_music_app_track_paths(verbose=True)
-        # Filter by supported extension, same as for a folder scan.
-        local_files = [f for f in local_files if os.path.splitext(f)[1] in supported]
+        # Filter by supported extension, same as for a folder scan
+        # (case-insensitively - see find_local_files()).
+        local_files = [f for f in local_files if os.path.splitext(f)[1].lower() in supported]
 
     # A messy Music.app library can list the same underlying file under
     # more than one track entry - dedup (order-preserving) so it's never
