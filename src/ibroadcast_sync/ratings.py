@@ -85,6 +85,19 @@ def sync_ratings(client: IBroadcastClient, dry_run: bool, verbose: bool = False)
 
     try:
         for t in local_tracks:
+            if client.auth_dead.is_set():
+                # Same situation do_upload() guards against: once the
+                # refresh token is confirmed dead, every remaining
+                # api_call() will fail the same way. Stop now with a clear
+                # message instead of burning through (potentially
+                # thousands of) remaining tracks one by one.
+                log(
+                    "Unrecoverable authentication failure mid-run (invalid refresh token). "
+                    "Stopping - re-run the script to re-authenticate.",
+                    color=("bold", "red"),
+                )
+                break
+
             if not t.get("rating"):
                 # Never rated in Music.app: don't touch a rating that may
                 # already be set directly on the iBroadcast side. Doesn't

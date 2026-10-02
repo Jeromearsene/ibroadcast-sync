@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
+from ibroadcast_sync import ratings as ratings_module
+from ibroadcast_sync.oauth_client import IBroadcastClient, ServerError
 from ibroadcast_sync.ratings import decayed_delay, itunes_rating_to_ibroadcast, next_retry_delay
 
 
@@ -61,3 +65,35 @@ class TestDecayedDelay:
         delay, streak = decayed_delay(0.4, consecutive_successes=20, min_delay=0.3, decay_after=20)
         assert delay == 0.3
         assert streak == 0
+
+
+class _DeadAuthClient(IBroadcastClient):
+    def __init__(self, library: dict) -> None:
+        super().__init__()
+        self.library = library
+        self.rated_calls = 0
+
+    def fetch_library(self, retry: bool = True) -> dict:
+        return self.library
+
+    def api_call(self, mode: str, extra: dict[str, Any] | None = None, retry: bool = True) -> Any:
+        self.rated_calls += 1
+        self.auth_dead.set()
+        raise ServerError("authentication is no longer valid")
+
+
+class TestDeadAuthStopsRatingSync:
+    def test_stops_after_authentication_dies(
+        self, monkeypatch: pytest.MonkeyPatch, sample_library: dict
+    ) -> None:
+        local_tracks = [
+            {"title": "Song A", "artist": "Artist One", "album": "Album X", "rating": 80},
+            {"title": "Song B", "artist": "Artist Two", "album": "Album Y", "rating": 20},
+        ]
+        monkeypatch.setattr(ratings_module, "get_music_app_ratings", lambda verbose=False: local_tracks)
+        monkeypatch.setattr(ratings_module.time, "sleep", lambda _delay: None)
+        client = _DeadAuthClient(sample_library)
+
+        ratings_module.sync_ratings(client, dry_run=False)
+
+        assert client.rated_calls == 1

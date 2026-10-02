@@ -318,6 +318,21 @@ class IBroadcastClient:
 
     def api_call(self, mode: str, extra: dict[str, Any] | None = None, retry: bool = True) -> Any:
         """Generic call to the JSON API (api.ibroadcast.com)."""
+        if self.token is None:
+            # Auth was already confirmed dead by an earlier call in this
+            # run (refresh_if_necessary() is a no-op once self.token is
+            # None, so it will never come back on its own). Fail fast with
+            # the same clear ServerError the 401-retry branch below raises,
+            # instead of falling through to auth_header()'s bare
+            # `assert self.token is not None` - callers that don't wrap
+            # api_call() in their own try/except (sync_playlists(),
+            # sync_ratings()) would otherwise crash on an unhelpful
+            # AssertionError.
+            raise ServerError(
+                f"Call {mode} failed: authentication is no longer valid "
+                "(refresh token rejected) - re-run the script to re-authenticate."
+            )
+
         body = {
             "mode": mode,
             "version": VERSION,
@@ -365,6 +380,14 @@ class IBroadcastClient:
         return data
 
     def fetch_library(self, retry: bool = True) -> Any:
+        if self.token is None:
+            # See the identical guard in api_call() for why this can't be
+            # left to auth_header()'s assert.
+            raise ServerError(
+                "Call library failed: authentication is no longer valid "
+                "(refresh token rejected) - re-run the script to re-authenticate."
+            )
+
         response = requests.post(
             LIBRARY_URL,
             data=json.dumps(
