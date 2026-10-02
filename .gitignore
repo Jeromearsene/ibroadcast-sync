@@ -27,3 +27,6 @@ coverage.xml
 
 # --- OS ---
 .DS_Store
+
+# IA
+.codex/
