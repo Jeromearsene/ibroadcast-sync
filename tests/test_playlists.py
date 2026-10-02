@@ -35,7 +35,7 @@ class FakeClient(IBroadcastClient):
         self.mock_api_call = MagicMock()
         self.api_call = self.mock_api_call  # type: ignore[method-assign]
 
-    def fetch_library(self) -> dict:
+    def fetch_library(self, retry: bool = True) -> dict:
         return self._library
 
 

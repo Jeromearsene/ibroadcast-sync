@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,6 +21,7 @@ from ibroadcast_sync import oauth_client
 from ibroadcast_sync.oauth_client import (
     IBroadcastClient,
     OAuthError,
+    ServerError,
     generate_pkce_pair,
     wait_for_oauth_callback,
 )
@@ -139,6 +140,69 @@ class TestRefreshIfNecessary:
 
         assert client.token is None
         assert client.auth_dead.is_set()
+
+
+class TestFetchLibraryTokenRefresh:
+    """Regression tests: fetch_library() used to have no 401-refresh logic
+    at all, unlike api_call()/upload_file() - a token that expired during
+    a long upload run (sync_playlists()/sync_ratings() both call
+    fetch_library() right after do_upload()) made the whole playlists/
+    ratings step fail outright instead of silently refreshing."""
+
+    def test_retries_after_refreshing_an_expired_token(self, token_file: Path) -> None:
+        client = IBroadcastClient()
+        client.token = {"expires_at": time.time() + 3600, "access_token": "old", "token_type": "Bearer"}
+
+        first_response = MagicMock(status_code=401, ok=False)
+        second_response = MagicMock(status_code=200, ok=True)
+        second_response.json.return_value = {"library": {}}
+
+        def fake_refresh() -> None:
+            client.token = {"expires_at": time.time() + 3600, "access_token": "new", "token_type": "Bearer"}
+
+        with (
+            patch(
+                "ibroadcast_sync.oauth_client.requests.post",
+                side_effect=[first_response, second_response],
+            ) as mock_post,
+            patch.object(client, "refresh_if_necessary", side_effect=fake_refresh),
+            patch.object(client, "save_token"),
+        ):
+            result = client.fetch_library()
+
+        assert result == {"library": {}}
+        assert mock_post.call_count == 2
+
+    def test_dead_refresh_token_raises_server_error(self, token_file: Path) -> None:
+        client = IBroadcastClient()
+        client.token = {"expires_at": time.time() + 3600, "access_token": "old", "token_type": "Bearer"}
+
+        fake_401 = MagicMock(status_code=401, ok=False)
+        with (
+            patch("ibroadcast_sync.oauth_client.requests.post", return_value=fake_401),
+            patch.object(client, "refresh_if_necessary", side_effect=lambda: setattr(client, "token", None)),
+            pytest.raises(ServerError, match="no longer valid"),
+        ):
+            client.fetch_library()
+
+
+class TestApiCallDeadToken:
+    def test_401_with_unrefreshable_token_raises_server_error_not_assertion(self, token_file: Path) -> None:
+        # Regression test: api_call() used to retry unconditionally after
+        # refresh_if_necessary(), even when the refresh had just failed
+        # and cleared self.token to None - the retried call then hit
+        # auth_header()'s `assert self.token is not None` and crashed with
+        # a bare AssertionError instead of a clear, catchable ServerError.
+        client = IBroadcastClient()
+        client.token = {"expires_at": time.time() + 3600, "access_token": "a", "token_type": "Bearer"}
+
+        fake_401 = MagicMock(status_code=401, ok=False)
+        with (
+            patch("ibroadcast_sync.oauth_client.requests.post", return_value=fake_401),
+            patch.object(client, "refresh_if_necessary", side_effect=lambda: setattr(client, "token", None)),
+            pytest.raises(ServerError, match="no longer valid"),
+        ):
+            client.api_call("status")
 
 
 class TestWaitForOauthCallback:

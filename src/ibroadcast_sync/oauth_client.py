@@ -340,6 +340,19 @@ class IBroadcastClient:
 
         if response.status_code == 401 and retry:
             self.refresh_if_necessary()
+            if self.token is None:
+                # refresh_if_necessary() couldn't get a new token (dead
+                # refresh_token - see the OAuthError branch there, which
+                # sets self.token = None) - retrying would just recurse
+                # into auth_header()'s `assert self.token is not None` and
+                # crash with a bare, uncatchable-by-callers AssertionError
+                # instead of a clear ServerError sync_playlists()/
+                # sync_ratings() (which don't wrap api_call() in their own
+                # try/except) could otherwise report sensibly.
+                raise ServerError(
+                    f"Call {mode} failed: authentication is no longer valid "
+                    "(refresh token rejected) - re-run the script to re-authenticate."
+                )
             self.save_token()
             return self.api_call(mode, extra, retry=False)
 
@@ -351,7 +364,7 @@ class IBroadcastClient:
             raise ServerError(f"Call {mode} failed: {data.get('message')}")
         return data
 
-    def fetch_library(self) -> Any:
+    def fetch_library(self, retry: bool = True) -> Any:
         response = requests.post(
             LIBRARY_URL,
             data=json.dumps(
@@ -368,6 +381,24 @@ class IBroadcastClient:
                 **self.auth_header(),
             },
         )
+
+        if response.status_code == 401 and retry:
+            # Unlike api_call()/upload_file(), this never refreshed an
+            # expired token - easy to miss, since sync_playlists() and
+            # sync_ratings() both call fetch_library() right after
+            # do_upload(), which can run for hours on a large library and
+            # outlive the access token, failing the whole playlists/
+            # ratings step outright instead of silently refreshing like
+            # every other call does.
+            self.refresh_if_necessary()
+            if self.token is None:
+                raise ServerError(
+                    "Call library failed: authentication is no longer valid "
+                    "(refresh token rejected) - re-run the script to re-authenticate."
+                )
+            self.save_token()
+            return self.fetch_library(retry=False)
+
         if not response.ok:
             raise ServerError(f"Invalid server status (library): {response.status_code}")
         return response.json()
