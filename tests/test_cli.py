@@ -9,6 +9,7 @@ credentials, and CLIENT_ID being checked at the right point.
 
 from __future__ import annotations
 
+import threading
 from unittest.mock import MagicMock
 
 import pytest
@@ -84,3 +85,49 @@ class TestDumpPlaylistsDoesNotRequireClientId:
         fake_playlists.assert_called_once()
         mock_client_class.assert_not_called()  # never even tried to authenticate
         assert "Test" in capsys.readouterr().out
+
+
+class TestDeadAuthStopsRun:
+    def test_exits_after_upload_aborts_for_dead_auth(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(cli, "CLIENT_ID", "configured-client-id")
+        monkeypatch.setattr("sys.argv", ["ibroadcast-sync", "--sync-ratings"])
+        client = MagicMock()
+        client.login.return_value = True
+        client.auth_dead = threading.Event()
+        monkeypatch.setattr(cli, "IBroadcastClient", lambda: client)
+
+        def abort_upload(*_args: object, **_kwargs: object) -> None:
+            client.auth_dead.set()
+
+        monkeypatch.setattr(cli, "do_upload", abort_upload)
+        mock_playlists = MagicMock()
+        mock_ratings = MagicMock()
+        monkeypatch.setattr(cli, "sync_playlists", mock_playlists)
+        monkeypatch.setattr(cli, "sync_ratings", mock_ratings)
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main()
+
+        assert exc_info.value.code == 1
+        mock_playlists.assert_not_called()
+        mock_ratings.assert_not_called()
+
+    def test_returns_error_status_if_ratings_loses_auth(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(cli, "CLIENT_ID", "configured-client-id")
+        monkeypatch.setattr(
+            "sys.argv", ["ibroadcast-sync", "--no-upload", "--no-playlists", "--sync-ratings"]
+        )
+        client = MagicMock()
+        client.login.return_value = True
+        client.auth_dead = threading.Event()
+        monkeypatch.setattr(cli, "IBroadcastClient", lambda: client)
+
+        def lose_auth(*_args: object, **_kwargs: object) -> None:
+            client.auth_dead.set()
+
+        monkeypatch.setattr(cli, "sync_ratings", lose_auth)
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main()
+
+        assert exc_info.value.code == 1

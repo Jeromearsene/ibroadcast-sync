@@ -64,8 +64,22 @@ def find_local_files(directory: str, supported_extensions: set[str]) -> list[str
     return files
 
 
-def load_remote_md5s(client: IBroadcastClient) -> set[str]:
+def load_remote_md5s(client: IBroadcastClient, retry: bool = True) -> set[str]:
     response = requests.post(UPLOAD_URL, headers=client.auth_header())
+
+    if response.status_code == 401 and retry:
+        # Same gap fetch_library() used to have: this talks to the upload
+        # endpoint directly rather than through api_call(), so it never
+        # refreshed an expired token on its own.
+        client.refresh_if_necessary()
+        if client.token is None:
+            raise ServerError(
+                "Call md5 failed: authentication is no longer valid "
+                "(refresh token rejected) - re-run the script to re-authenticate."
+            )
+        client.save_token()
+        return load_remote_md5s(client, retry=False)
+
     if not response.ok:
         raise ServerError(f"Invalid server status (md5): {response.status_code}")
     return set(response.json()["md5"])
@@ -90,6 +104,16 @@ def upload_file(client: IBroadcastClient, filepath: str) -> None:
         # real cause (the refresh is just a no-op if the token is already
         # valid).
         client.refresh_if_necessary()
+        if client.token is None:
+            # Refresh failed (dead refresh_token): calling save_token() here
+            # would write a literal `null` over the cached token file, and
+            # retrying would just recurse into auth_header()'s bare assert.
+            # Fail fast with the same clear message api_call()/
+            # fetch_library() already give in this situation.
+            raise ServerError(
+                "Upload failed: authentication is no longer valid "
+                "(refresh token rejected) - re-run the script to re-authenticate."
+            )
         client.save_token()
         response = _do_post()
     if not response.ok:

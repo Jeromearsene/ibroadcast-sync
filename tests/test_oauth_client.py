@@ -205,6 +205,34 @@ class TestApiCallDeadToken:
             client.api_call("status")
 
 
+class TestCallsWithAlreadyDeadToken:
+    def test_api_call_fails_before_building_auth_header(self) -> None:
+        client = IBroadcastClient()
+        client.token = None
+        client.auth_dead.set()
+
+        with (
+            patch("ibroadcast_sync.oauth_client.requests.post") as mock_post,
+            pytest.raises(ServerError, match="no longer valid"),
+        ):
+            client.api_call("status")
+
+        mock_post.assert_not_called()
+
+    def test_fetch_library_fails_before_building_auth_header(self) -> None:
+        client = IBroadcastClient()
+        client.token = None
+        client.auth_dead.set()
+
+        with (
+            patch("ibroadcast_sync.oauth_client.requests.post") as mock_post,
+            pytest.raises(ServerError, match="no longer valid"),
+        ):
+            client.fetch_library()
+
+        mock_post.assert_not_called()
+
+
 class TestWaitForOauthCallback:
     """Starts a real local server on a throwaway port - these are the only
     tests in the suite that touch an actual socket, deliberately, since

@@ -191,9 +191,20 @@ def main() -> None:
 
     if not args.no_upload:
         do_upload(client, args.source_dir, args.dry_run, workers=args.workers)
+        if client.auth_dead.is_set():
+            # do_upload() already logged a clear explanation and aborted
+            # the remaining uploads, but it returns normally (no
+            # exception) - without this, we'd carry on into playlists/
+            # ratings with a token that's permanently None and can only
+            # fail there too.
+            sys.exit(1)
 
     if not args.no_playlists:
         sync_playlists(client, args.dry_run, verbose=True)
 
     if args.sync_ratings:
         sync_ratings(client, args.dry_run, verbose=True)
+        # sync_ratings() records per-track failures and returns normally,
+        # so preserve a failing process status if authentication died.
+        if client.auth_dead.is_set():
+            sys.exit(1)
