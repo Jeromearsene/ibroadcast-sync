@@ -10,12 +10,23 @@ credentials, and CLIENT_ID being checked at the right point.
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-from ibroadcast_sync import cli
+from ibroadcast_sync import cli, status
 from ibroadcast_sync.cli import build_parser
+
+
+@pytest.fixture(autouse=True)
+def _isolate_status_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """main() now calls write_status() unconditionally at the end of every
+    run (success, early sys.exit, or crash) - redirect it to a throwaway
+    path so these tests never write to the real project's
+    data/ibroadcast_sync_status.json, same reasoning as the MD5_CACHE_FILE
+    fixture in test_md5_cache.py."""
+    monkeypatch.setattr(status, "STATUS_FILE", tmp_path / "ibroadcast_sync_status.json")
 
 
 class TestBuildParser:

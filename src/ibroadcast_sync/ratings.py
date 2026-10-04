@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from .logging_utils import log
 from .matching import index_remote_ratings, index_remote_tracks, resolve_track_id
@@ -13,6 +13,14 @@ from .progress import ProgressDisplay
 
 if TYPE_CHECKING:
     from .oauth_client import IBroadcastClient
+
+
+class RatingsSyncResult(TypedDict):
+    updated: int
+    unmatched: int
+    unchanged: int
+    already_ok: int
+    failed: int
 
 
 def itunes_rating_to_ibroadcast(rating_0_100: int) -> int:
@@ -54,7 +62,7 @@ def decayed_delay(
     return max(min_delay, current_delay / 2), 0
 
 
-def sync_ratings(client: IBroadcastClient, dry_run: bool, verbose: bool = False) -> None:
+def sync_ratings(client: IBroadcastClient, dry_run: bool, verbose: bool = False) -> RatingsSyncResult:
     log("Reading Music.app ratings...")
     local_tracks = get_music_app_ratings(verbose=verbose)
 
@@ -178,3 +186,11 @@ def sync_ratings(client: IBroadcastClient, dry_run: bool, verbose: bool = False)
         log("Rating failure details:", color="red")
         for label, reason in failures:
             log(f"  ❌ {label}: {reason}", color="red")
+
+    return {
+        "updated": updated,
+        "unmatched": unmatched,
+        "unchanged": unchanged,
+        "already_ok": already_ok,
+        "failed": failed,
+    }

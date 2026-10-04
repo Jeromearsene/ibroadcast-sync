@@ -22,6 +22,7 @@ def test_data_files_live_under_data_dir() -> None:
         config.LIBRARY_DUMP_FILE,
         config.MD5_CACHE_FILE,
         config.FAILURES_LOG_FILE,
+        config.STATUS_FILE,
     ):
         assert path.parent == config.DATA_DIR
 

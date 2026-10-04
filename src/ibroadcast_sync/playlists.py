@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from .logging_utils import log
 from .matching import index_remote_playlists, index_remote_tracks, normalize, resolve_track_id
@@ -12,7 +12,14 @@ if TYPE_CHECKING:
     from .oauth_client import IBroadcastClient
 
 
-def sync_playlists(client: IBroadcastClient, dry_run: bool, verbose: bool = False) -> None:
+class PlaylistSyncResult(TypedDict):
+    created: int
+    updated: int
+    skipped: int
+    unmatched_tracks: int
+
+
+def sync_playlists(client: IBroadcastClient, dry_run: bool, verbose: bool = False) -> PlaylistSyncResult:
     log("Reading Music.app playlists...")
     local_playlists = get_music_app_playlists(verbose=verbose)
     log(f"{len(local_playlists)} playlists found locally.")
@@ -25,6 +32,10 @@ def sync_playlists(client: IBroadcastClient, dry_run: bool, verbose: bool = Fals
 
     total_fallback_album_used = 0
     total_fallback_artist_used = 0
+    created = 0
+    updated = 0
+    skipped = 0
+    unmatched_tracks_total = 0
 
     for pl in local_playlists:
         name = pl["name"]
@@ -54,6 +65,7 @@ def sync_playlists(client: IBroadcastClient, dry_run: bool, verbose: bool = Fals
 
         total_fallback_album_used += fallback_album_used
         total_fallback_artist_used += fallback_artist_used
+        unmatched_tracks_total += len(unmatched)
 
         if unmatched:
             titles_preview = ", ".join(u[0] for u in unmatched[:5])
@@ -89,6 +101,7 @@ def sync_playlists(client: IBroadcastClient, dry_run: bool, verbose: bool = Fals
 
         if not track_ids:
             log(f"Playlist '{name}': no tracks matched, skipping.", color="yellow")
+            skipped += 1
             continue
 
         # `is not None`, not truthiness: playlist id 0 is a legitimate id
@@ -99,14 +112,20 @@ def sync_playlists(client: IBroadcastClient, dry_run: bool, verbose: bool = Fals
         if dry_run:
             action = "would update" if existing_id is not None else "would create"
             log(f"[dry-run] Playlist '{name}': {action} with {len(track_ids)} track(s).", color="magenta")
+            if existing_id is not None:
+                updated += 1
+            else:
+                created += 1
             continue
 
         if existing_id is not None:
             log(f"Playlist '{name}': updating ({len(track_ids)} tracks).", color="green")
             client.api_call("updateplaylist", {"playlist": existing_id, "tracks": track_ids})
+            updated += 1
         else:
             log(f"Playlist '{name}': creating ({len(track_ids)} tracks).", color="green")
             client.api_call("createplaylist", {"name": name, "tracks": track_ids})
+            created += 1
 
     if total_fallback_album_used:
         log(
@@ -121,3 +140,10 @@ def sync_playlists(client: IBroadcastClient, dry_run: bool, verbose: bool = Fals
             f"(different album - often an empty local album tag vs. 'Unknown Album' on iBroadcast's side).",
             color="cyan",
         )
+
+    return {
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "unmatched_tracks": unmatched_tracks_total,
+    }

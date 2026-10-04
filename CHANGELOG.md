@@ -7,6 +7,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A small run-status file (`data/ibroadcast_sync_status.json`), written
+  atomically at the end of every real sync (success, early abort on dead
+  auth, or crash). Lets an external tool - in particular a menu bar
+  companion app - show "last sync" information (timestamp, counts,
+  success/error) without parsing the logs or re-running anything. See
+  `ibroadcast_sync/status.py`.
 - `.env` is now loaded automatically (via `python-dotenv`, in
   `config.py`) whenever the script runs - no more need to `source .env`
   or export variables by hand first. A real shell-exported variable (or
