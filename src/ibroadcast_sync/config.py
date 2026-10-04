@@ -42,6 +42,7 @@ TOKEN_FILE = DATA_DIR / "ibroadcast_sync_token.json"
 LIBRARY_DUMP_FILE = DATA_DIR / "ibroadcast_library_dump.json"
 MD5_CACHE_FILE = DATA_DIR / "ibroadcast_md5_cache.json"
 FAILURES_LOG_FILE = DATA_DIR / "ibroadcast_sync_failures.log"
+STATUS_FILE = DATA_DIR / "ibroadcast_sync_status.json"
 
 # --------------------------------------------------------------------------
 # iBroadcast OAuth / API

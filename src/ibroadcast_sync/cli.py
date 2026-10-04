@@ -12,9 +12,10 @@ from .config import CLIENT_ID, LIBRARY_DUMP_FILE
 from .logging_utils import log
 from .musicapp import get_music_app_playlists
 from .oauth_client import IBroadcastClient
-from .playlists import sync_playlists
-from .ratings import sync_ratings
-from .upload import do_upload
+from .playlists import PlaylistSyncResult, sync_playlists
+from .ratings import RatingsSyncResult, sync_ratings
+from .status import SyncStatus, write_status
+from .upload import UploadResult, do_upload
 
 # --------------------------------------------------------------------------
 # Interactive wizard - only used when the script is launched with no
@@ -152,6 +153,35 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_status(
+    args: argparse.Namespace,
+    upload_result: UploadResult | None,
+    playlists_result: PlaylistSyncResult | None,
+    ratings_result: RatingsSyncResult | None,
+    error: str | None = None,
+) -> SyncStatus:
+    """Assembles the small run summary written to disk at the end of a
+    real sync (see :mod:`ibroadcast_sync.status`). Only includes counts
+    for the steps that actually ran this time - a menu bar companion app
+    reading this can tell "ratings weren't synced" apart from "ratings
+    were synced, 0 updated"."""
+    status: SyncStatus = {
+        "success": error is None,
+        "error": error,
+        "dry_run": args.dry_run,
+    }
+    if upload_result is not None:
+        status["uploaded"] = upload_result["uploaded"]
+        status["upload_failed"] = upload_result["failed"]
+    if playlists_result is not None:
+        status["playlists_created_or_updated"] = playlists_result["created"] + playlists_result["updated"]
+        status["playlists_unmatched_tracks"] = playlists_result["unmatched_tracks"]
+    if ratings_result is not None:
+        status["ratings_updated"] = ratings_result["updated"]
+        status["ratings_failed"] = ratings_result["failed"]
+    return status
+
+
 def main() -> None:
     parser = build_parser()
 
@@ -189,22 +219,54 @@ def main() -> None:
         log(f"Library written to {LIBRARY_DUMP_FILE}. Check its structure before running a real sync.")
         return
 
-    if not args.no_upload:
-        do_upload(client, args.source_dir, args.dry_run, workers=args.workers)
-        if client.auth_dead.is_set():
-            # do_upload() already logged a clear explanation and aborted
-            # the remaining uploads, but it returns normally (no
-            # exception) - without this, we'd carry on into playlists/
-            # ratings with a token that's permanently None and can only
-            # fail there too.
-            sys.exit(1)
+    # Written to disk at the end of this block (success, failure, or
+    # crash) so other tools - in particular a menu bar companion app -
+    # can show "last sync" information without parsing logs. Each result
+    # starts as None and is only filled in once its step actually runs.
+    upload_result: UploadResult | None = None
+    playlists_result: PlaylistSyncResult | None = None
+    ratings_result: RatingsSyncResult | None = None
 
-    if not args.no_playlists:
-        sync_playlists(client, args.dry_run, verbose=True)
+    try:
+        if not args.no_upload:
+            upload_result = do_upload(client, args.source_dir, args.dry_run, workers=args.workers)
+            if client.auth_dead.is_set():
+                # do_upload() already logged a clear explanation and aborted
+                # the remaining uploads, but it returns normally (no
+                # exception) - without this, we'd carry on into playlists/
+                # ratings with a token that's permanently None and can only
+                # fail there too.
+                write_status(
+                    _build_status(
+                        args,
+                        upload_result,
+                        playlists_result,
+                        ratings_result,
+                        error="Authentication failed mid-run (invalid refresh token).",
+                    )
+                )
+                sys.exit(1)
 
-    if args.sync_ratings:
-        sync_ratings(client, args.dry_run, verbose=True)
-        # sync_ratings() records per-track failures and returns normally,
-        # so preserve a failing process status if authentication died.
-        if client.auth_dead.is_set():
-            sys.exit(1)
+        if not args.no_playlists:
+            playlists_result = sync_playlists(client, args.dry_run, verbose=True)
+
+        if args.sync_ratings:
+            ratings_result = sync_ratings(client, args.dry_run, verbose=True)
+            # sync_ratings() records per-track failures and returns normally,
+            # so preserve a failing process status if authentication died.
+            if client.auth_dead.is_set():
+                write_status(
+                    _build_status(
+                        args,
+                        upload_result,
+                        playlists_result,
+                        ratings_result,
+                        error="Authentication failed mid-run (invalid refresh token).",
+                    )
+                )
+                sys.exit(1)
+    except Exception as e:
+        write_status(_build_status(args, upload_result, playlists_result, ratings_result, error=str(e)))
+        raise
+
+    write_status(_build_status(args, upload_result, playlists_result, ratings_result))

@@ -14,7 +14,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 import requests
 
@@ -30,6 +30,12 @@ if TYPE_CHECKING:
 
 # Result tuple returned by process_file(): (path, status, was_cached, error).
 ProcessResult = tuple[str, str, bool, "str | None"]
+
+
+class UploadResult(TypedDict):
+    uploaded: int
+    skipped: int
+    failed: int
 
 
 def load_supported_extensions(client: IBroadcastClient) -> set[str]:
@@ -218,7 +224,9 @@ def process_file(
         progress.mark_upload_finished(filepath)
 
 
-def do_upload(client: IBroadcastClient, source_dir: str | None, dry_run: bool, workers: int = 4) -> None:
+def do_upload(
+    client: IBroadcastClient, source_dir: str | None, dry_run: bool, workers: int = 4
+) -> UploadResult:
     supported = load_supported_extensions(client)
 
     if source_dir:
@@ -339,3 +347,5 @@ def do_upload(client: IBroadcastClient, source_dir: str | None, dry_run: bool, w
         log("Failure details:", color="red")
         for filepath, reason in failures:
             log(f"  ❌ {short_path(filepath)}: {reason}", color="red")
+
+    return {"uploaded": uploaded, "skipped": skipped, "failed": failed}
